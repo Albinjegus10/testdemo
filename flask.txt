@@ -1,0 +1,404 @@
+from flask import Flask, render_template, request, jsonify
+from flask_mysqldb import MySQL
+from datetime import datetime
+import random
+
+app = Flask(__name__)
+
+# MySQL configuration
+app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'root'
+app.config['MYSQL_DB'] = 'memory_game_db'
+
+mysql = MySQL(app)
+
+
+@app.route('/')
+def index():
+    return render_template('memory_game.html')
+
+
+@app.route('/submit_score', methods=['POST'])
+def submit_score():
+    data = request.json
+    cur = mysql.connection.cursor()
+    cur.execute("INSERT INTO scores (name, moves, time_taken, difficulty) VALUES (%s, %s, %s, %s)",
+                (data['name'], data['moves'], data['time_taken'], data['difficulty']))
+    mysql.connection.commit()
+    cur.close()
+    return jsonify({'status': 'Score saved successfully!'})
+
+
+@app.route('/top_scores', methods=['GET'])
+def top_scores():
+    difficulty = request.args.get('difficulty', 'easy')
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT name, moves, time_taken FROM scores WHERE difficulty = %s ORDER BY moves, time_taken LIMIT 10",
+                (difficulty,))
+    scores = cur.fetchall()
+    cur.close()
+    return jsonify([
+        {'name': score[0], 'moves': score[1], 'time_taken': score[2]}
+        for score in scores
+    ])
+
+
+@app.route('/daily_challenge', methods=['GET'])
+def daily_challenge():
+    # Generate a daily seed based on the current date
+    today = datetime.now().strftime("%Y%m%d")
+    random.seed(today)
+
+    # Generate a random challenge
+    symbols = ['🍎', '🍌', '🍇', '🍉', '🍒', '🍍', '🥝', '🍑', '🥭', '🍓', '🍐', '🍊']
+    challenge_symbols = random.sample(symbols, 8)  # Select 8 random symbols
+    challenge_layout = challenge_symbols * 2  # Double the symbols for pairs
+    random.shuffle(challenge_layout)
+
+    return jsonify({
+        'layout': challenge_layout,
+        'difficulty': 'daily'
+    })
+
+
+if __name__ == '__main__':
+    app.run(debug=True).............<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Memory Card Game</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced Memory Card Matching Game</h1>
+        <div class="game-options">
+            <select id="difficulty">
+                <option value="easy">Easy (4x4)</option>
+                <option value="medium">Medium (6x6)</option>
+                <option value="hard">Hard (8x8)</option>
+            </select>
+            <button id="start-game">Start New Game</button>
+            <button id="daily-challenge">Daily Challenge</button>
+        </div>
+        <div class="game-info">
+            <p>Difficulty: <span id="current-difficulty">Easy</span></p>
+            <p>Moves: <span id="moves">0</span></p>
+            <p>Time: <span id="time">0</span> seconds</p>
+            <p>Score: <span id="score">0</span></p>
+        </div>
+        <div id="game-board" class="game-board">
+            <!-- Cards will be dynamically rendered here using JavaScript -->
+        </div>
+        <button id="submit-score" disabled>Submit Score</button>
+        <div id="leaderboard" class="leaderboard">
+            <h2>Top Scores</h2>
+            <select id="leaderboard-difficulty">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="daily">Daily Challenge</option>
+            </select>
+            <ul id="top-scores"></ul>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>......body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f0f8ff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    max-width: 800px;
+    width: 100%;
+}
+
+h1, h2 {
+    color: #333;
+    text-align: center;
+}
+
+.game-options, .game-info {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.game-board {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+.card {
+    width: 80px;
+    height: 80px;
+    background-color: #3498db;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 2em;
+    cursor: pointer;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+.card.flipped {
+    transform: rotateY(180deg);
+}
+
+.card .front,
+.card .back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.card .front {
+    background-color: #3498db;
+    color: white;
+}
+
+.card .back {
+    background-color: #2ecc71;
+    transform: rotateY(180deg);
+}
+
+button, select {
+    padding: 10px;
+    margin: 5px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+button:hover, select:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+.leaderboard {
+    margin-top: 20px;
+}
+
+#top-scores {
+    list-style-type: none;
+    padding: 0;
+}
+
+#top-scores li {
+    background-color: #ecf0f1;
+    margin-bottom: 5px;
+    padding: 5px;
+    border-radius: 3px;
+}
+
+@media (max-width: 600px) {
+    .card {
+        width: 60px;
+        height: 60px;
+        font-size: 1.5em;
+    }
+}.......document.addEventListener('DOMContentLoaded', () => {
+    const gameBoard = document.getElementById('game-board');
+    const movesElement = document.getElementById('moves');
+    const timeElement = document.getElementById('time');
+    const scoreElement = document.getElementById('score');
+    const difficultySelect = document.getElementById('difficulty');
+    const currentDifficultyElement = document.getElementById('current-difficulty');
+    const startButton = document.getElementById('start-game');
+    const dailyChallengeButton = document.getElementById('daily-challenge');
+    const submitButton = document.getElementById('submit-score');
+    const topScoresList = document.getElementById('top-scores');
+    const leaderboardDifficultySelect = document.getElementById('leaderboard-difficulty');
+
+    let cards = [];
+    let flippedCards = [];
+    let moves = 0;
+    let time = 0;
+    let score = 0;
+    let timer;
+    let gameStarted = false;
+    let currentDifficulty = 'easy';
+
+    const symbols = ['🍎', '🍌', '🍇', '🍉', '🍒', '🍍', '🥝', '🍑', '🥭', '🍓', '🍐', '🍊', '🍋', '🍈', '🍏', '🫐', '🥥', '🍅', '🥑', '🥕', '🌽', '🥔', '🍆', '🥜', '🌰', '🍄', '🥦', '🥬', '🥒', '🫑', '🌶️', '🧄'];
+
+    function createCard(symbol) {
+        const card = document.createElement('div');
+        card.classList.add('card');
+        card.innerHTML = `
+            <div class="front">?</div>
+            <div class="back">${symbol}</div>
+        `;
+        card.addEventListener('click', flipCard);
+        return card;
+    }
+
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    function startGame(isDailyChallenge = false) {
+        if (isDailyChallenge) {
+            fetch('/daily_challenge')
+                .then(response => response.json())
+                .then(data => {
+                    setupGame(data.layout, 'daily');
+                });
+        } else {
+            const difficulty = difficultySelect.value;
+            const gridSize = difficulty === 'easy' ? 16 : difficulty === 'medium' ? 36 : 64;
+            const symbolSet = shuffle(symbols).slice(0, gridSize / 2);
+            const gameSymbols = shuffle([...symbolSet, ...symbolSet]);
+            setupGame(gameSymbols, difficulty);
+        }
+    }
+
+    function setupGame(gameSymbols, difficulty) {
+        gameBoard.innerHTML = '';
+        cards = [];
+        flippedCards = [];
+        moves = 0;
+        time = 0;
+        score = 0;
+        gameStarted = true;
+        currentDifficulty = difficulty;
+
+        movesElement.textContent = moves;
+        timeElement.textContent = time;
+        scoreElement.textContent = score;
+        currentDifficultyElement.textContent = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+
+        const gridSize = gameSymbols.length;
+        const columns = Math.sqrt(gridSize);
+        gameBoard.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+
+        gameSymbols.forEach(symbol => {
+            const card = createCard(symbol);
+            cards.push(card);
+            gameBoard.appendChild(card);
+        });
+
+        clearInterval(timer);
+        timer = setInterval(() => {
+            time++;
+            timeElement.textContent = time;
+        }, 1000);
+
+        submitButton.disabled = true;
+    }
+
+    function flipCard() {
+        if (!gameStarted) return;
+        if (flippedCards.length === 2) return;
+        if (this === flippedCards[0]) return;
+
+        this.classList.add('flipped');
+        flippedCards.push(this);
+
+        if (flippedCards.length === 2) {
+            moves++;
+            movesElement.textContent = moves;
+            checkForMatch();
+        }
+    }
+
+    function checkForMatch() {
+        const [card1, card2] = flippedCards;
+        const symbol1 = card1.querySelector('.back').textContent;
+        const symbol2 = card2.querySelector('.back').textContent;
+
+        if (symbol1 === symbol2) {
+            flippedCards = [];
+            updateScore(10);
+            checkForWin();
+        } else {
+            setTimeout(() => {
+                card1.classList.remove('flipped');
+                card2.classList.remove('flipped');
+                flippedCards = [];
+                updateScore(-1);
+            }, 1000);
+        }
+    }
+
+    function updateScore(points) {
+        score += points;
+        scoreElement.textContent = score;
+    }
+
+    function checkForWin() {
+        if (cards.every(card => card.classList.contains('flipped'))) {
+            clearInterval(timer);
+            gameStarted = false;
+            submitButton.disabled = false;
+            const finalScore = calculateFinalScore();
+            alert(`Congratulations! You won in ${moves} moves and ${time} seconds! Your final score is ${finalScore}.`);
+        }
+    }
+
+    function calculateFinalScore() {
+        const difficultyMultiplier = currentDifficulty === 'easy' ? 1 : currentDifficulty === 'medium' ? 1.5 : 2;
+        const timeBonus = Math.max(0, 1000 - time * 2);
+        const finalScore = (score + timeBonus) * difficultyMultiplier;
+        return Math.round(finalScore);
+    }
+
+    function submitScore() {
+        const playerName = prompt("Enter your name:");
+        if (playerName) {
+            const finalScore = calculateFinalScore();
+            fetch('/submit_score', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: playerName,
+                    moves: moves,
+                    time_taken: time,
+                    difficulty: currentDifficulty,
+                    score: finalScore
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.status);
+                updateLeaderboard();
+            });
+        }
+    }
+
+    function updateLeaderboard() {
+        const difficulty = leaderboardDifficultySelect.value;
+        fetch(`/top_scores?difficulty=${difficulty}`)
